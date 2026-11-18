@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>Sổ Chi Tiêu</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Chi Tiêu">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#0e7468">
+<meta name="format-detection" content="telephone=no">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div id="app">
+  <header class="top">
+    <div class="top-in">
+      <h1 id="title">Hôm nay</h1>
+      <div class="top-actions" id="topActions"></div>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="view" id="v-today"></section>
+    <section class="view" id="v-stats" hidden></section>
+    <section class="view" id="v-book" hidden></section>
+    <section class="view" id="v-settings" hidden></section>
+  </main>
+
+  <nav class="tabbar" id="tabbar">
+    <button class="tab on" data-tab="today"><span class="ti">◷</span><span>Hôm nay</span></button>
+    <button class="tab" data-tab="stats"><span class="ti">◔</span><span>Thống kê</span></button>
+    <button class="tab add" id="addBtn" aria-label="Thêm khoản mới"><span>+</span></button>
+    <button class="tab" data-tab="book"><span class="ti">▤</span><span>Sổ</span></button>
+    <button class="tab" data-tab="settings"><span class="ti">⚙</span><span>Cài đặt</span></button>
+  </nav>
+</div>
+
+<div class="sheet-wrap" id="sheetWrap" hidden>
+  <div class="sheet-bg" id="sheetBg"></div>
+  <div class="sheet" id="sheet" role="dialog" aria-modal="true">
+    <div class="sheet-head">
+      <button class="link" id="sheetClose">Đóng</button>
+      <h2 id="sheetTitle"></h2>
+      <span class="sheet-side" id="sheetSide"></span>
+    </div>
+    <div class="sheet-body" id="sheetBody"></div>
+  </div>
+</div>
+
+<div class="lock" id="lock" hidden>
+  <div class="lock-in">
+    <div class="lock-logo">đ</div>
+    <p id="lockMsg">Nhập mã PIN</p>
+    <div class="pin-dots" id="pinDots"><i></i><i></i><i></i><i></i></div>
+    <div class="pinpad" id="pinpad"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast" hidden></div>
+
+<script src="parse.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
