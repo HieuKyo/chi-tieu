@@ -286,5 +286,73 @@ select.input { background-image: linear-gradient(45deg, transparent 50%, var(--m
 .steps { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; font-size: 14px; }
 .code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12.5px; background: var(--surface-2); padding: 1px 5px; border-radius: 5px; }
 
+/* ---------- Khoản hay dùng, gợi ý đi chợ ---------- */
+.favs { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; margin: -2px -16px; padding: 2px 16px; }
+.favs::-webkit-scrollbar { display: none; }
+.fav {
+  flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px; max-width: 220px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 99px; padding: 7px 12px; font-size: 13.5px;
+}
+.fav:active { transform: scale(.97); background: var(--accent-soft); }
+.fav-n { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.fav b { font-family: var(--font-num); font-variant-numeric: tabular-nums; }
+.shop { padding: 8px 10px 8px 14px; gap: 10px; }
+.shop input[type="checkbox"] { width: 22px; height: 22px; accent-color: var(--accent); flex: 0 0 auto; }
+.shop .icon-btn { width: 30px; height: 30px; font-size: 16px; flex: 0 0 auto; }
+.shop.done .grow { text-decoration: line-through; color: var(--muted); }
+
+/* ---------- Tiện ích ---------- */
+.lunar-today {
+  display: flex; gap: 14px; align-items: center; text-align: left; width: 100%;
+  background: var(--surface); border: 0; border-radius: var(--r); box-shadow: var(--shadow); padding: 14px 16px;
+}
+.lt-day {
+  flex: 0 0 78px; display: flex; flex-direction: column; align-items: center; padding: 8px 0 6px; border-radius: 14px;
+  background: var(--accent); color: var(--accent-fg); font-size: 11.5px; font-weight: 600;
+}
+.lt-day b { font: 700 34px/1.05 var(--font-num); }
+.tools { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.tool {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 3px; text-align: left; min-width: 0;
+  background: var(--surface); border: 0; border-radius: var(--r); box-shadow: var(--shadow); padding: 14px;
+}
+.tool:active { transform: scale(.98); }
+.tool-ic { font-size: 26px; line-height: 1; margin-bottom: 6px; }
+
+.lcal { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+.lcal .hd { font-size: 11px; color: var(--muted); text-align: center; font-weight: 600; padding-bottom: 2px; }
+.lcal .c {
+  border: 0; background: var(--surface); border-radius: 10px; padding: 6px 0 5px; min-width: 0;
+  display: flex; flex-direction: column; align-items: center; gap: 1px;
+}
+.lcal .c b { font: 600 16px/1.1 var(--font-num); }
+.lcal .c small { font-size: 10.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.lcal .c.sun b { color: var(--chi); }
+.lcal .c.moon small { color: var(--accent); font-weight: 700; }
+.lcal .c.hol small { color: var(--gold); font-weight: 700; }
+.lcal .c.today { outline: 2px solid var(--accent); outline-offset: -2px; }
+.lcal .c.sel { background: var(--accent); }
+.lcal .c.sel b, .lcal .c.sel small { color: var(--accent-fg); }
+
+.calc-disp { text-align: right; display: flex; flex-direction: column; gap: 4px; min-height: 96px; justify-content: flex-end; }
+.calc-expr { font: 500 22px/1.25 var(--font-num); word-break: break-all; }
+.calc-res { font-size: 17px; color: var(--muted); }
+.keypad button.eq { background: var(--accent); color: var(--accent-fg); box-shadow: none; }
+
+.cash-row { display: grid; grid-template-columns: 76px 1fr 84px; gap: 8px; align-items: center; }
+.cash-row .den { font-weight: 650; }
+.cash-row .input { text-align: center; padding: 7px 4px; min-width: 0; }
+.cash-row .icon-btn { width: 34px; height: 34px; flex: 0 0 auto; }
+.cash-row .v { text-align: right; }
+
+.fx-out { display: flex; flex-direction: column; gap: 2px; }
+.fx-big { font: 700 28px/1.15 var(--font-num); word-break: break-word; }
+
+.tbl-wrap { overflow-x: auto; margin-top: 8px; }
+.tbl { width: 100%; border-collapse: collapse; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.tbl th, .tbl td { padding: 6px 6px; text-align: right; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.tbl th { color: var(--muted); font-weight: 600; }
+.tbl th:first-child, .tbl td:first-child { text-align: left; }
+
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
 @media (max-width: 360px) { .hero .big { font-size: 32px; } .kpi b { font-size: 14.5px; } }

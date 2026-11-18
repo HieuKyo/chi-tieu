@@ -1,8 +1,8 @@
 // Service worker: lưu sẵn các file của app để mở được khi không có mạng.
 // Đổi VERSION mỗi lần sửa app để iPhone tải bản mới.
-const VERSION = "chitieu-v1";
+const VERSION = "chitieu-v3";
 const FILES = [
-  "./", "./index.html", "./styles.css", "./parse.js", "./app.js", "./manifest.webmanifest",
+  "./", "./index.html", "./styles.css", "./parse.js", "./lunar.js", "./app.js", "./tools.js", "./manifest.webmanifest",
   "./icons/apple-touch-icon.png", "./icons/icon-192.png", "./icons/icon-512.png"
 ];
 

@@ -3,7 +3,7 @@
 
 const P = window.Parse;
 const $ = id => document.getElementById(id);
-const VERSION = "1.0";
+const VERSION = "1.1";
 
 // ---------- Tiện ích DOM ----------
 function add(el, kids) {
@@ -148,11 +148,13 @@ function freshState() {
     recurring: [], debts: [], gifts: [],
     goals: [{id: uid(), name: "Quỹ Tết", icon: "🧧", target: 10000000, deadline: "2027-02-06", moves: []}],
     split: {people: [{name: "Tôi", paid: 0}, {name: "", paid: 0}], cat: "an"},
+    shop: {items: [], seen: {}},
+    tools: {},
     settings: {
       theme: "auto", pinHash: null, pinSalt: null, lockAfter: 60,
       budget: {total: 0, cats: {}},
       jars: {nec: 55, ffa: 10, edu: 10, ltss: 10, play: 10, give: 5},
-      defaultWallet: "w_cash", lastBackup: null, imported: {}
+      defaultWallet: "w_cash", lastBackup: null
     }
   };
 }
@@ -208,18 +210,18 @@ const debtLeft = d => d.amount - d.pays.reduce((a, p) => a + p.amount, 0);
 const ui = {searchOpen: false, search: "", months: 1, statMonth: null, statType: "chi", bookTab: "vi",
             catType: "chi", showDone: false, recurNote: ""};
 let tab = "today";
-const TITLES = {today: "Hôm nay", stats: "Thống kê", book: "Sổ", settings: "Cài đặt"};
+const TITLES = {today: "Hôm nay", stats: "Thống kê", book: "Sổ", tools: "Tiện ích", settings: "Cài đặt"};
 
 function setTab(t) {
   tab = t;
-  document.querySelectorAll(".tab[data-tab]").forEach(b => b.classList.toggle("on", b.dataset.tab === t));
+  document.querySelectorAll(".tab[data-tab]").forEach(b => b.classList.toggle("on", b.dataset.tab === (t === "settings" ? "tools" : t)));
   for (const k of Object.keys(TITLES)) $("v-" + k).hidden = k !== t;
   $("title").textContent = TITLES[t];
   render();
   window.scrollTo(0, 0);
 }
 function render() {
-  ({today: renderToday, stats: renderStats, book: renderBook, settings: renderSettings})[tab]();
+  ({today: renderToday, stats: renderStats, book: renderBook, tools: renderTools, settings: renderSettings})[tab]();
 }
 function setActions(...els) { $("topActions").replaceChildren(...els.filter(Boolean)); }
 
@@ -298,37 +300,51 @@ function txRow(t) {
 // ---------- Thêm / sửa khoản ----------
 function otherWallet(id) { const w = S.wallets.find(x => x.id !== id); return w ? w.id : id; }
 
-function txSheet(orig, preset) {
+function txSheet(orig, preset, after) {
   const editing = !!orig;
   const d = Object.assign({type: "chi", amount: 0, cat: null, wallet: S.settings.defaultWallet, to: null,
                            date: today(), note: "", photo: false}, orig || {}, preset || {});
   if (!S.wallets.some(w => w.id === d.wallet) && S.wallets[0]) d.wallet = S.wallets[0].id;
-  let digits = d.amount ? String(d.amount) : "";
+  let expr = d.amount ? String(d.amount) : "";  // VD "45000+30000−5000"
   let photoBlob = null, photoRemoved = false;
+  const evalExpr = s => s.split(/(?=[+−])/).reduce((a, part) => {
+    const n = Number(part.replace(/[+−]/g, "") || 0);
+    return a + (part[0] === "−" ? -n : n);
+  }, 0);
 
   const disp = h("div", {class: "v num"}), hint = h("div", {class: "h"});
   function paintAmt() {
-    const n = Number(digits || 0);
+    const n = Math.max(0, evalExpr(expr));
     disp.textContent = sign(d.type) + NF.format(n) + "đ";
     disp.className = "v num " + d.type;
-    hint.textContent = n >= 1e5 ? "≈ " + short(n) : "";
+    hint.textContent = /[+−]/.test(expr)
+      ? expr.split(/([+−])/).map(p => /[+−]/.test(p) ? " " + p + " " : p ? NF.format(Number(p)) : "").join("")
+      : n >= 1e5 ? "≈ " + short(n) : "";
   }
   function press(k) {
-    if (k === "⌫") digits = digits.slice(0, -1);
-    else if (k === "C") digits = "";
-    else { if (!digits && /^0+$/.test(k)) return; if ((digits + k).length > 12) return; digits += k; }
+    if (k === "⌫") expr = expr.slice(0, -1);
+    else if (k === "C") expr = "";
+    else if (k === "+" || k === "−") {
+      if (!expr) return;
+      expr = /[+−]$/.test(expr) ? expr.slice(0, -1) + k : expr + k;
+    } else {
+      const cur = expr.split(/[+−]/).pop();
+      if (!cur && /^0+$/.test(k)) return;
+      if ((cur + k).length > 12 || expr.length > 80) return;
+      expr += k;
+    }
     paintAmt();
   }
   const keypad = h("div", {class: "keypad"},
-    ["1", "2", "3", "⌫", "4", "5", "6", "C", "7", "8", "9", "000", "0", "00"].map(k =>
-      h("button", {type: "button", class: /[⌫C]|000/.test(k) ? "fn" : "",
-                   style: k === "0" || k === "00" ? {gridColumn: "span 2"} : null, onclick: () => press(k)}, k)));
+    ["1", "2", "3", "⌫", "4", "5", "6", "C", "7", "8", "9", "+", "000", "0", "00", "−"].map(k =>
+      h("button", {type: "button", class: /^[⌫C+−]$/.test(k) ? "fn" : "", "aria-label": k === "−" ? "trừ" : null,
+                   onclick: () => press(k)}, k)));
 
   const quick = h("input", {class: "input", placeholder: "Hoặc gõ: phở 45k hôm qua", autocomplete: "off", enterkeyhint: "done"});
   const applyQuick = () => {
     if (!quick.value.trim()) return;
     const r = P.parseQuick(quick.value, S.cats.filter(c => !c.hidden), S.wallets, today());
-    if (r.amount) digits = String(r.amount);
+    if (r.amount) expr = String(r.amount);
     if (d.type !== "chuyen") { d.type = r.type; if (r.cat) d.cat = r.cat.id; }
     if (r.wallet) { d.wallet = r.wallet.id; walletBox.value = d.wallet; }
     dateIn.value = r.date;
@@ -389,7 +405,7 @@ function txSheet(orig, preset) {
   const repeat = editing ? null : h("input", {type: "checkbox"});
 
   async function doSave() {
-    const amount = Number(digits || 0);
+    const amount = Math.max(0, evalExpr(expr));
     if (!amount) { toast("Nhập số tiền trước đã"); return; }
     if (d.type === "chuyen" && d.to === d.wallet) { toast("Chọn hai ví khác nhau"); return; }
     if (d.type !== "chuyen" && !d.cat) d.cat = d.type === "thu" ? "thukhac" : "khac";
@@ -401,6 +417,7 @@ function txSheet(orig, preset) {
       else if (photoRemoved) { await delPhoto(t.id); t.photo = false; }
     } catch (e) { toast("Không lưu được ảnh: " + e.message); }
     if (!editing) S.tx.push(t);
+    if (after) after(t);
     if (repeat && repeat.checked) {
       const day = Number(t.date.slice(8));
       S.recurring.push({id: uid(), type: t.type, amount, cat: t.cat, wallet: t.wallet, to: t.to, note: t.note,
@@ -476,73 +493,6 @@ function listSheet(title, list, preset) {
     preset ? h("button", {type: "button", class: "btn block", onclick: () => txSheet(null, preset)}, "+ Thêm khoản") : null));
 }
 
-// ---------- Nhập từ ngân hàng ----------
-function guessBankWallet(bank) {
-  if (bank) {
-    const w = S.wallets.find(w => P.norm(w.name).replace(/\s/g, "").includes(bank) || w.kind === bank);
-    if (w) return w.id;
-  }
-  const b = S.wallets.find(w => w.kind === "bank");
-  return b ? b.id : S.settings.defaultWallet;
-}
-
-function bankSheet() {
-  const ta = h("textarea", {class: "input", rows: 5, id: "bankText",
-    placeholder: "Dán tin nhắn hoặc thông báo giao dịch vào đây. Dán nhiều tin một lúc cũng được."});
-  const out = h("div", {class: "stack"});
-  function read() {
-    const items = P.parseBankText(ta.value, today());
-    if (!items.length) {
-      out.replaceChildren(h("div", {class: "empty"},
-        ta.value.trim() ? "Không thấy số tiền nào. Tin cần có dạng “-150,000VND” hoặc “thanh toán 45.000đ”." : ""));
-      return;
-    }
-    const rows = items.map(it => {
-      const c = P.guessCat(it.note, catsOf(it.type), it.type);
-      return {it, on: !S.settings.imported[it.hash], type: it.type,
-              cat: c ? c.id : (it.type === "thu" ? "thukhac" : "khac"), wallet: guessBankWallet(it.bank)};
-    });
-    const go = h("button", {type: "button", class: "btn primary block", onclick: () => {
-      let n = 0;
-      for (const r of rows) if (r.on) {
-        S.tx.push({id: uid(), ts: Date.now() + n, type: r.type, amount: r.it.amount, cat: r.cat, wallet: r.wallet,
-                   to: null, date: r.it.date, note: r.it.note || "Giao dịch ngân hàng", src: "bank"});
-        S.settings.imported[r.it.hash] = 1; n++;
-      }
-      save(); closeSheet(); render(); toast("Đã nhập " + n + " khoản");
-    }});
-    const paintGo = () => { const n = rows.filter(r => r.on).length; go.textContent = n ? "Nhập " + n + " khoản" : "Chưa chọn khoản nào"; go.disabled = !n; };
-    const list = h("div", {class: "list"}, rows.map(r => h("div", {class: "imp" + (r.on ? "" : " dup")},
-      h("input", {type: "checkbox", checked: r.on, style: {width: "20px", height: "20px", accentColor: "var(--accent)", marginTop: "3px", flex: "0 0 auto"},
-                  onchange: e => { r.on = e.target.checked; paintGo(); }}),
-      h("div", {class: "grow stack", style: {gap: "6px"}},
-        h("div", {class: "row between"},
-          h("b", {class: "num " + r.type}, sign(r.type) + money(r.it.amount)),
-          h("span", {class: "small muted"}, dayLabel(r.it.date) + (r.it.time ? " · " + r.it.time : ""))),
-        r.it.note ? h("div", {class: "small"}, r.it.note) : null,
-        r.on ? null : h("span", null, h("span", {class: "pill warn"}, "Đã nhập trước đây")),
-        h("div", {class: "grid2"}, catSel(r.type, r.cat, v => { r.cat = v; }), walletSel(r.wallet, v => { r.wallet = v; }))))));
-    paintGo();
-    out.replaceChildren(h("div", {class: "sec-title"}, "Tìm thấy " + rows.length + " giao dịch"), list, go);
-  }
-  ta.addEventListener("paste", () => setTimeout(read, 0));
-  ta.addEventListener("input", () => { clearTimeout(ta._t); ta._t = setTimeout(read, 500); });
-  openSheet("Nhập từ ngân hàng", h("div", {class: "stack"},
-    h("p", {class: "small muted", style: {margin: 0}},
-      "iPhone không cho app đọc thông báo của app khác. Hãy chép tin SMS hoặc nội dung giao dịch rồi dán vào đây. " +
-      "Muốn tự chép mỗi khi có tin ngân hàng, xem Cài đặt › Nhập từ ngân hàng."),
-    ta,
-    h("div", {class: "row"},
-      h("button", {type: "button", class: "btn", onclick: async () => {
-        try {
-          const t = await navigator.clipboard.readText();
-          ta.value = (ta.value ? ta.value + "\n\n" : "") + t; read();
-        } catch (e) { toast("Không đọc được bộ nhớ tạm. Chạm giữ vào ô rồi chọn Dán."); }
-      }}, "📋 Dán"),
-      h("button", {type: "button", class: "btn primary", onclick: read}, "Đọc tin")),
-    out));
-}
-
 // ---------- Tab Hôm nay ----------
 function renderToday() {
   const v = $("v-today"), t = today(), mk = mkOf(t);
@@ -550,8 +500,7 @@ function renderToday() {
     h("button", {class: "icon-btn", type: "button", "aria-label": "Tìm kiếm", onclick: () => {
       ui.searchOpen = !ui.searchOpen; if (!ui.searchOpen) ui.search = "";
       renderToday(); if (ui.searchOpen) $("q").focus();
-    }}, "🔍"),
-    h("button", {class: "icon-btn", type: "button", "aria-label": "Nhập từ ngân hàng", onclick: bankSheet}, "🏦"));
+    }}, "🔍"));
 
   const month = txIn(mk);
   const chiM = sum(month, "chi"), thuM = sum(month, "thu");
@@ -571,7 +520,8 @@ function renderToday() {
     hero = h("div", {class: "hero"},
       h("div", {class: "lbl"}, rest >= 0 ? "Hôm nay còn được tiêu" : "Hôm nay đã tiêu quá"),
       h("div", {class: "big"}, money(Math.abs(rest))),
-      h("div", {class: "sub"}, "Mỗi ngày được " + money(allow) + " · hôm nay đã chi " + money(chiToday)),
+      h("div", {class: "sub"}, allow > 0 ? "Mỗi ngày được " + money(allow) + " · hôm nay đã chi " + money(chiToday)
+        : "Đã dùng hết hạn mức tháng · hôm nay đã chi " + money(chiToday)),
       h("div", {class: "bar"}, h("i", {style: {width: Math.min(100, chiM / bud * 100) + "%"}})),
       h("div", {class: "sub"}, "Tháng này " + short(chiM) + " / " + short(bud) + " · còn " + left + " ngày"),
       stats);
@@ -602,6 +552,9 @@ function renderToday() {
   for (const d of S.debts) if (d.due && d.due < t && debtLeft(d) > 0) {
     alerts.append(h("div", {class: "alert"}, (d.kind === "cho" ? "🤝 " + d.person + " quá hạn trả bạn " : "🙏 Quá hạn trả " + d.person + " ") + money(debtLeft(d))));
   }
+  if (S.tx.length && new Date().getHours() >= 20 && !S.tx.some(x => x.date === t)) {
+    alerts.append(h("div", {class: "alert info"}, "📝 Hôm nay chưa ghi khoản nào. Chạm + hoặc gõ nhanh ở ô trên."));
+  }
   const lb = S.settings.lastBackup;
   if (S.tx.length >= 15 && (!lb || daysBetween(lb, t) > 14)) {
     alerts.append(h("div", {class: "alert info"},
@@ -627,7 +580,7 @@ function renderToday() {
       kids.push(h("div", {class: "card empty"},
         h("div", {style: {fontSize: "34px"}}, "🪙"),
         h("p", {class: "bold", style: {color: "var(--fg)", margin: "6px 0"}}, "Chưa có khoản nào"),
-        h("p", {style: {margin: 0}}, "Bấm nút + để ghi, gõ nhanh “phở 45k” ở ô trên, hoặc bấm 🏦 để dán tin nhắn ngân hàng.")));
+        h("p", {style: {margin: 0}}, "Bấm nút + để ghi, hoặc gõ nhanh “phở 45k” ở ô trên.")));
     } else if (!rows.length) {
       kids.push(h("div", {class: "empty"}, ui.search ? "Không tìm thấy khoản nào." : "Tháng này chưa có khoản nào."));
     }
@@ -650,7 +603,85 @@ function renderToday() {
   }
   if (search) search.addEventListener("input", () => { ui.search = search.value; paintList(); });
   paintList();
-  fill(v, hero, search, quick, alerts.children.length ? alerts : null, listBox);
+  fill(v, hero, search, quick, favsRow(), alerts.children.length ? alerts : null, forecastCard(), listBox);
+}
+
+// Khoản hay ghi trong 60 ngày (cùng loại, danh mục, số tiền, ghi chú, ít nhất 2 lần).
+function frequent(limit) {
+  const since = P.addDays(today(), -60), m = new Map();
+  for (const t of S.tx) {
+    if (t.type === "chuyen" || t.rec || t.date < since) continue;
+    const key = t.type + "|" + t.cat + "|" + t.amount + "|" + P.norm(t.note || "");
+    const e = m.get(key) || {t, n: 0, last: ""};
+    e.n++;
+    if (t.date >= e.last) { e.last = t.date; e.t = t; }
+    m.set(key, e);
+  }
+  return [...m.values()].filter(e => e.n >= 2)
+    .sort((a, b) => b.n - a.n || b.last.localeCompare(a.last)).slice(0, limit || 8).map(e => e.t);
+}
+function addLike(src) {
+  const t = {id: uid(), ts: Date.now(), type: src.type, amount: src.amount, cat: src.cat, to: null, date: today(), note: src.note,
+             wallet: S.wallets.some(w => w.id === src.wallet) ? src.wallet : S.settings.defaultWallet};
+  S.tx.push(t); save(); render();
+  toast("Đã ghi " + (t.note || cat(t.cat).name) + " " + money(t.amount), "Hoàn tác", () => {
+    S.tx = S.tx.filter(x => x !== t); save(); render();
+  });
+}
+function favsRow() {
+  const list = frequent(8);
+  if (!list.length) return null;
+  return h("div", {class: "favs", "aria-label": "Khoản hay dùng, chạm để ghi"}, list.map(t => {
+    const c = cat(t.cat);
+    return h("button", {type: "button", class: "fav", onclick: () => addLike(t)},
+      h("span", null, c.icon), h("span", {class: "fav-n"}, t.note || c.name), h("b", {class: "num " + t.type}, short(t.amount)));
+  }));
+}
+
+// Dự báo chi cuối tháng theo tốc độ 14 ngày gần nhất (không tính khoản cố định), cộng khoản cố định sắp tới.
+function forecastCard() {
+  const t = today(), mk = mkOf(t), day = Number(t.slice(8)), n = dim(mk);
+  if (!S.tx.length) return null;
+  const first = S.tx.reduce((a, x) => x.date < a ? x.date : a, t);
+  const hist = daysBetween(first, t) + 1;
+  if (hist < 5) return null;
+  const win = Math.min(14, hist), from = P.addDays(t, -(win - 1));
+  const pace = sum(S.tx.filter(x => !x.rec && x.date >= from && x.date <= t), "chi") / win;
+  const month = txIn(mk);
+  const chiM = sum(month.filter(x => x.date <= t), "chi");
+  const pending = S.recurring.filter(r => r.on && r.type === "chi" && r.next && r.next > t && r.next.startsWith(mk))
+    .reduce((a, r) => a + r.amount, 0);
+  const fc = chiM + pace * (n - day) + pending;
+  const bud = S.settings.budget.total;
+
+  const notes = [];
+  if (hist >= 14) {
+    const wk = (a, b) => byCat(S.tx.filter(x => x.date > P.addDays(t, a) && x.date <= P.addDays(t, b)), "chi");
+    const cur = wk(-7, 0), prev = wk(-14, -7);
+    let up = null, down = null;
+    for (const id of new Set([...Object.keys(cur), ...Object.keys(prev)])) {
+      const x = cur[id] || 0, y = prev[id] || 0, d = x - y;
+      if (d >= 100000 && (y ? x >= y * 1.3 : x >= 200000) && (!up || d > up.d)) up = {id, d, p: y ? Math.round(d / y * 100) : null};
+      if (-d >= 100000 && x <= y * 0.7 && (!down || d < down.d)) down = {id, d, p: Math.round(-d / y * 100)};
+    }
+    if (up) { const c = cat(up.id); notes.push(["chi", c.icon + " " + c.name + " tuần này tăng " + (up.p != null ? up.p + "% " : "") + "(+" + short(up.d) + ") so với tuần trước"]); }
+    if (down) { const c = cat(down.id); notes.push(["thu", c.icon + " " + c.name + " tuần này giảm " + down.p + "% (−" + short(-down.d) + ") so với tuần trước"]); }
+  }
+  const totM = sum(month, "chi");
+  const top = Object.entries(byCat(month, "chi")).sort((a, b) => b[1] - a[1])[0];
+  if (top && totM && notes.length < 2) {
+    const c = cat(top[0]);
+    notes.push(["", c.icon + " " + c.name + " chiếm " + Math.round(top[1] / totM * 100) + "% chi tiêu tháng này"]);
+  }
+  return h("div", {class: "card stack", style: {gap: "8px"}},
+    h("div", {class: "row between"}, h("h3", {style: {margin: 0}}, "Dự báo cuối tháng"),
+      h("span", {class: "tiny muted"}, "theo " + win + " ngày gần đây")),
+    h("div", {class: "row between wrap", style: {alignItems: "baseline"}},
+      h("b", {class: "num", style: {fontSize: "24px"}}, "≈ " + short(fc)),
+      bud ? h("span", {class: "pill " + (fc > bud ? "chi" : "thu")},
+        fc > bud ? "vượt hạn mức " + short(fc - bud) : "dưới hạn mức " + short(bud - fc)) : null),
+    h("div", {class: "small muted"}, "Đang chi khoảng " + short(pace) + "/ngày" + (pending ? " · sắp tới còn " + short(pending) + " khoản cố định" : "")),
+    notes.map(([cls, txt]) => h("div", {class: "small " + cls}, txt)));
 }
 
 // ---------- Tab Thống kê ----------
@@ -825,17 +856,80 @@ function renderStats() {
   const trendCard = h("div", {class: "card"}, h("div", {class: "row between"}, h("h3", null, "6 tháng gần đây"),
     h("span", {class: "tiny"}, h("b", {class: "thu"}, "■ "), "Thu  ", h("b", {class: "chi"}, "■ "), "Chi")), trendChart(months));
 
-  fill(v, nav, kpis, catCard, cmpCard, dayCard, heatCard, wkCard, topCard, trendCard);
+  const yearBtn = h("button", {type: "button", class: "btn block", onclick: () => yearSheet(Number(mk.slice(0, 4)))},
+    "🏆 Tổng kết năm " + mk.slice(0, 4));
+  fill(v, nav, kpis, catCard, cmpCard, dayCard, heatCard, wkCard, topCard, trendCard, yearBtn);
+}
+
+function yearSheet(y) {
+  const ys = String(y), list = S.tx.filter(t => t.date.startsWith(ys));
+  const chi = sum(list, "chi"), thu = sum(list, "thu"), t0 = today();
+  const months = [];
+  for (let m = 1; m <= 12; m++) {
+    const mk = ys + "-" + String(m).padStart(2, "0"), l = list.filter(t => t.date.startsWith(mk));
+    months.push({mk, thu: sum(l, "thu"), chi: sum(l, "chi")});
+  }
+  const nav = h("div", {class: "month-nav"},
+    h("button", {class: "icon-btn", type: "button", "aria-label": "Năm trước", onclick: () => yearSheet(y - 1)}, "‹"),
+    h("b", null, "Năm " + y),
+    h("button", {class: "icon-btn", type: "button", "aria-label": "Năm sau", disabled: ys >= t0.slice(0, 4), onclick: () => yearSheet(y + 1)}, "›"));
+  if (!list.length) {
+    openSheet("Tổng kết năm", h("div", {class: "stack"}, nav, h("div", {class: "empty"}, "Năm " + y + " chưa có khoản nào.")));
+    return;
+  }
+  const spentMonths = months.filter(m => m.chi > 0);
+  const maxM = spentMonths.reduce((a, m) => !a || m.chi > a.chi ? m : a, null);
+  const minM = spentMonths.reduce((a, m) => !a || m.chi < a.chi ? m : a, null);
+  const chiList = list.filter(t => t.type === "chi");
+  const daily = {}, cnt = {};
+  for (const t of chiList) { daily[t.date] = (daily[t.date] || 0) + t.amount; cnt[t.cat] = (cnt[t.cat] || 0) + 1; }
+  const topDay = Object.entries(daily).sort((a, b) => b[1] - a[1])[0];
+  const start = list.reduce((a, t) => t.date < a ? t.date : a, ys + "-12-31");
+  const end = t0.startsWith(ys) ? t0 : ys + "-12-31";
+  const span = Math.max(1, daysBetween(start, end) + 1);
+  const noSpend = span - Object.keys(daily).filter(d => d >= start && d <= end).length;
+  const cf = chiList.filter(t => t.cat === "cf");
+  const gifts = S.gifts.filter(g => g.kind === "di" && g.date.startsWith(ys));
+  const byc = Object.entries(byCat(list, "chi")).sort((a, b) => b[1] - a[1]);
+  const most = Object.entries(cnt).sort((a, b) => b[1] - a[1])[0];
+  const big = chiList.slice().sort((a, b) => b.amount - a.amount)[0];
+  const tile = (label, val, sub, cls) => h("div", {class: "kpi"}, h("span", null, label), h("b", {class: cls || ""}, val), sub ? h("i", {class: "muted"}, sub) : null);
+
+  openSheet("Tổng kết năm", h("div", {class: "stack"},
+    nav,
+    h("div", {class: "kpis"},
+      tile("Thu", short(thu), null, "thu"), tile("Chi", short(chi), null, "chi"),
+      tile("Để dành", short(thu - chi), thu ? Math.max(0, Math.round((thu - chi) / thu * 100)) + "% thu nhập" : null)),
+    h("div", {class: "card"}, h("h3", null, "Thu chi từng tháng"), trendChart(months)),
+    h("div", {class: "grid2"},
+      maxM ? tile("Tháng tiêu nhiều nhất", monthLabel(maxM.mk).replace("Tháng ", "T"), short(maxM.chi)) : null,
+      minM && minM !== maxM ? tile("Tháng tiêu ít nhất", monthLabel(minM.mk).replace("Tháng ", "T"), short(minM.chi)) : null,
+      topDay ? tile("Ngày tiêu nhiều nhất", dmy(topDay[0]).slice(0, -5), short(topDay[1])) : null,
+      tile("Ngày không tiêu gì", noSpend + " ngày", "trên " + span + " ngày"),
+      cf.length ? tile("Cà phê", cf.length + " lần", short(sum(cf, "chi"))) : null,
+      gifts.length ? tile("Hiếu hỉ đã mừng", gifts.length + " lần", short(gifts.reduce((a, g) => a + g.amount, 0))) : null,
+      tile("Trung bình", short(chi / span), "mỗi ngày"),
+      tile("Đã ghi", list.length + " khoản", most ? "nhiều nhất: " + cat(most[0]).name : null)),
+    byc.length ? h("div", {class: "card stack", style: {gap: "9px"}}, h("h3", {style: {margin: 0}}, "Tiêu nhiều nhất vào"),
+      byc.slice(0, 5).map(([id, v]) => {
+        const c = cat(id);
+        return h("div", {class: "stack", style: {gap: "4px"}},
+          h("div", {class: "row"}, h("span", null, c.icon), h("span", {class: "grow"}, c.name),
+            h("span", {class: "small muted num"}, Math.round(v / chi * 100) + "%"), h("b", {class: "num"}, short(v))),
+          h("div", {class: "bar"}, h("i", {style: {width: v / byc[0][1] * 100 + "%", background: c.color}})));
+      })) : null,
+    big ? h("div", {class: "sec-title"}, "Khoản chi lớn nhất năm") : null,
+    big ? h("div", {class: "txlist"}, txRow(big)) : null));
 }
 
 // ---------- Tab Sổ ----------
 function renderBook() {
   const v = $("v-book");
   setActions();
-  const tabs = segCtl([["vi", "Ví"], ["no", "Nợ"], ["hieuhi", "Hiếu hỉ"], ["muctieu", "Mục tiêu"], ["hu", "6 hũ"], ["chia", "Chia tiền"]],
+  const tabs = segCtl([["vi", "Ví"], ["dicho", "Đi chợ"], ["no", "Nợ"], ["hieuhi", "Hiếu hỉ"], ["muctieu", "Mục tiêu"], ["hu", "6 hũ"], ["chia", "Chia tiền"]],
     ui.bookTab, k => { ui.bookTab = k; renderBook(); }, "seg chips");
   const box = h("div", {class: "stack", style: {gap: "14px"}});
-  ({vi: bookWallets, no: bookDebts, hieuhi: bookGifts, muctieu: bookGoals, hu: bookJars, chia: bookSplit})[ui.bookTab](box);
+  ({vi: bookWallets, dicho: bookShop, no: bookDebts, hieuhi: bookGifts, muctieu: bookGoals, hu: bookJars, chia: bookSplit})[ui.bookTab](box);
   fill(v, tabs, box);
 }
 
@@ -1207,10 +1301,82 @@ function bookSplit(box) {
     h("div", {class: "sec-title"}, "Kết quả"), result);
 }
 
+// Danh sách đi chợ: món đã tick gộp thành một khoản chi "Đi chợ".
+function shopPrice(text) {
+  // "thịt ba chỉ 120k" -> 120000; "sữa 32.000" -> 32000; "2 hộp sữa" -> không có giá
+  let m = text.match(/(\d+(?:[.,]\d+)?)\s*(k|nghìn|ngàn|ng)(?![\p{L}])/iu);
+  if (m) return {name: (text.slice(0, m.index) + text.slice(m.index + m[0].length)).trim(), price: Math.round(P.toNum(m[1]) * 1000)};
+  m = text.match(/(\d{1,3}(?:[.,]\d{3})+|\d{4,})\s*(đ|d|vnd)?\s*$/i);
+  if (m) return {name: text.slice(0, m.index).trim(), price: P.toNum(m[1])};
+  return {name: text.trim(), price: 0};
+}
+function bookShop(box) {
+  const sh = S.shop;
+  const inp = h("input", {class: "input", id: "shopIn", placeholder: "Thêm món: thịt ba chỉ 120k", autocomplete: "off", enterkeyhint: "done"});
+  const listBox = h("div", {class: "stack", style: {gap: "10px"}});
+  const addItem = (name, price) => {
+    name = name.trim();
+    if (!name) return;
+    sh.items.push({id: uid(), name, price: price || 0, done: false});
+    const k = P.norm(name), s = sh.seen[k] || {name, price: 0, n: 0};
+    s.n++; s.name = name; if (price) s.price = price;
+    sh.seen[k] = s;
+    save(); paint();
+  };
+  const submit = () => {
+    const r = shopPrice(inp.value);
+    addItem(r.name || inp.value, r.price);
+    inp.value = ""; inp.focus();
+  };
+  inp.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); submit(); } });
+
+  function paint() {
+    const todo = sh.items.filter(i => !i.done), done = sh.items.filter(i => i.done);
+    const est = sh.items.reduce((a, i) => a + (i.price || 0), 0);
+    const doneSum = done.reduce((a, i) => a + (i.price || 0), 0);
+    const row = it => {
+      const price = moneyInput(it.price);
+      Object.assign(price.style, {maxWidth: "112px", textAlign: "right", padding: "6px 10px"});
+      price.setAttribute("aria-label", "Giá " + it.name);
+      price.addEventListener("change", () => {
+        it.price = price.money();
+        const s = sh.seen[P.norm(it.name)];
+        if (s && it.price) s.price = it.price;
+        save(); paint();
+      });
+      return h("div", {class: "li shop" + (it.done ? " done" : "")},
+        h("input", {type: "checkbox", checked: it.done, "aria-label": "Đã mua " + it.name,
+                    onchange: e => { it.done = e.target.checked; save(); paint(); }}),
+        h("span", {class: "grow"}, it.name), price,
+        h("button", {type: "button", class: "icon-btn", "aria-label": "Bỏ " + it.name,
+                     onclick: () => { sh.items = sh.items.filter(x => x !== it); save(); paint(); }}, "×"));
+    };
+    const inList = new Set(sh.items.map(i => P.norm(i.name)));
+    const sugg = Object.entries(sh.seen).filter(([k]) => !inList.has(k)).sort((a, b) => b[1].n - a[1].n).slice(0, 12);
+    fill(listBox,
+      sugg.length ? h("div", {class: "favs"}, sugg.map(([, s]) => h("button", {type: "button", class: "fav", onclick: () => addItem(s.name, s.price)},
+        h("span", null, "+"), h("span", {class: "fav-n"}, s.name), s.price ? h("b", {class: "num"}, short(s.price)) : null))) : null,
+      sh.items.length ? h("div", {class: "list"}, todo.map(row), done.map(row))
+        : h("div", {class: "empty"}, "Danh sách trống. Thêm món cần mua ở ô trên, giá có thể để trống rồi điền sau."),
+      sh.items.length ? h("div", {class: "row between small muted", style: {padding: "0 4px"}},
+        h("span", null, todo.length + " món chưa mua"), h("span", null, "Dự kiến " + money(est))) : null,
+      done.length ? h("button", {type: "button", class: "btn primary block", onclick: () => {
+        const names = done.map(i => i.name).join(", ");
+        txSheet(null, {type: "chi", cat: "cho", amount: doneSum, note: names.length > 60 ? names.slice(0, 57) + "…" : names},
+          () => { sh.items = sh.items.filter(i => !i.done); });
+      }}, "Ghi " + done.length + " món đã mua vào chi tiêu" + (doneSum ? " (" + short(doneSum) + ")" : "")) : null,
+      done.length ? confirmBtn("Bỏ các món đã mua", "Chạm lần nữa để bỏ", () => {
+        sh.items = sh.items.filter(i => !i.done); save(); paint();
+      }, "btn block") : null);
+  }
+  paint();
+  box.append(h("div", {class: "quick"}, inp, h("button", {type: "button", class: "btn primary", onclick: submit}, "Thêm")), listBox);
+}
+
 // ---------- Tab Cài đặt ----------
 function renderSettings() {
   const v = $("v-settings"), st = S.settings;
-  setActions();
+  setActions(h("button", {class: "icon-btn", type: "button", "aria-label": "Về Tiện ích", onclick: () => setTab("tools")}, "‹"));
   const card = (title, ...kids) => h("div", {class: "card stack"}, h("h3", {style: {margin: 0}}, title), kids);
 
   // Hạn mức
@@ -1254,17 +1420,14 @@ function renderSettings() {
     })) : null,
     h("button", {type: "button", class: "btn block", onclick: () => recurSheet(null)}, "+ Thêm khoản cố định"));
 
-  // Ngân hàng
-  const bankCard = card("Nhập từ ngân hàng",
-    h("button", {type: "button", class: "btn primary block", onclick: bankSheet}, "🏦 Dán tin nhắn ngân hàng"),
-    h("details", null, h("summary", {class: "bold", style: {cursor: "pointer", padding: "4px 0"}}, "Tự chép tin SMS ngân hàng bằng Phím tắt"),
-      h("ol", {class: "steps", style: {marginTop: "8px"}},
-        h("li", null, "Mở app ", h("b", null, "Phím tắt"), " (Shortcuts) › tab ", h("b", null, "Tự động hoá"), " › ", h("b", null, "+"), "."),
-        h("li", null, "Chọn ", h("b", null, "Tin nhắn"), ". Ở ", h("b", null, "Người gửi"), " chọn số / tên ngân hàng (VD: Vietcombank). Có thể thêm ", h("b", null, "Tin nhắn chứa"), " “VND”."),
-        h("li", null, "Chọn ", h("b", null, "Chạy ngay"), " (không hỏi trước)."),
-        h("li", null, "Thêm tác vụ ", h("b", null, "Sao chép vào bộ nhớ tạm"), ", nội dung là ", h("b", null, "Tin nhắn"), "."),
-        h("li", null, "Khi có tin mới, mở Sổ Chi Tiêu › 🏦 › ", h("b", null, "Dán"), ". App tự tách số tiền, ngày, nội dung và bỏ qua tin đã nhập.")),
-      h("p", {class: "tiny muted"}, "Thông báo đẩy trong app ngân hàng (không phải SMS) thì iPhone không cho đọc. Khi đó chạm giữ thông báo hoặc mở chi tiết giao dịch, chép nội dung rồi dán vào app.")));
+  // Nhắc ghi chi tiêu
+  const remindCard = card("Nhắc ghi chi tiêu",
+    h("p", {class: "small muted", style: {margin: 0}}, "App trên màn hình chính không tự gửi thông báo được. Dùng app Lời nhắc có sẵn của iPhone:"),
+    h("ol", {class: "steps"},
+      h("li", null, "Mở app ", h("b", null, "Lời nhắc"), ", tạo lời nhắc mới “Ghi chi tiêu”."),
+      h("li", null, "Chạm ", h("b", null, "ⓘ"), ", bật ", h("b", null, "Ngày"), " và ", h("b", null, "Giờ"), ", chọn 21:00."),
+      h("li", null, "Ở ", h("b", null, "Lặp lại"), " chọn ", h("b", null, "Hằng ngày"), ", rồi bấm ", h("b", null, "Xong"), ".")),
+    h("p", {class: "tiny muted", style: {margin: 0}}, "Sau 20 giờ, nếu hôm đó chưa ghi khoản nào, màn Hôm nay cũng nhắc bạn."));
 
   // 6 hũ
   const jarInputs = JARS.map(([id, name, icon]) => {
@@ -1315,7 +1478,7 @@ function renderSettings() {
       h("li", null, "Mở app từ icon trên màn hình chính. App chạy toàn màn hình và dùng được khi không có mạng.")),
     h("p", {class: "tiny warn", style: {margin: 0}}, "Lưu ý: dữ liệu trong Safari và trong app ở màn hình chính là hai nơi riêng. Hãy cài xong rồi mới bắt đầu ghi."));
 
-  fill(v, installCard, budCard, catCard, recCard, bankCard, jarCard, secCard, looksCard, dataCard,
+  fill(v, installCard, budCard, catCard, recCard, remindCard, jarCard, secCard, looksCard, dataCard,
     h("p", {class: "tiny muted", style: {textAlign: "center"}}, "Sổ Chi Tiêu " + VERSION + " · dữ liệu không rời khỏi máy"));
 }
 
@@ -1542,4 +1705,5 @@ async function boot() {
   if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
   if ("serviceWorker" in navigator && location.protocol.startsWith("http")) navigator.serviceWorker.register("sw.js").catch(() => {});
 }
-boot();
+// Chờ nạp xong mọi file (tools.js nạp sau app.js) rồi mới chạy.
+if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot); else boot();
